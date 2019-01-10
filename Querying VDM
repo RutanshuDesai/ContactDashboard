@@ -1,0 +1,73 @@
+import pandas as pd
+import datascience as ds
+
+## . NEED TO GET THE SERVICE ACCOUNT FOR THE VDM PASSWORD
+
+import os
+
+os.environ['HTTP_PROXY']= 'http://proxy.util.phx2.redhat.com:8080'
+os.environ['HTTPS_PROXY']= 'https://proxy.util.phx2.redhat.com:8080'
+
+def query_JDV(queryString,vdm='marketing_vdm_dynamic'):
+    """Query JDV and return DataFrame
+
+    Keyword arguments:
+    queryString -- SQL query
+    vdm -- sales_vdm, eng_enterprise_vdm, cee_vdm_dynamic
+    """
+    
+    import pandas.io.sql as psql
+    import jaydebeapi
+    
+    conn = jaydebeapi.connect(jclassname='org.teiid.jdbc.TeiidDriver',
+                         url = 'jdbc:teiid:' + vdm + '@mms://jdv.prod.a4.vary.redhat.com:31000',
+                         driver_args = ['rudesai', '#'],
+                         jars='/usr/share/java/teiid-9.3.0.Final-jdbc.jar')
+
+    df = psql.read_sql(sql=queryString, con=conn);
+    conn.close()
+    return df
+    
+   ##
+   
+# STEP 1
+# query from VDM for accounts table
+accounts = query_JDV("SELECT sfdc_account_classification, sfdc_account_id, sfdc_account_record_type_name, sfdc_account_organization, sfdc_account_owner_sub_region, sfdc_account_sub_organization FROM APL_VDB_ELOQUA.eloqua_accnts  WHERE   sfdc_account_record_type_name != ''      and        sfdc_account_owner_sub_region != ''" )
+    
+# STEP 2
+# transfering accounts data to redshift instance
+accounts.to_redshift('nafm_accounts_c','rudesai','ChangeM3!','na_field_marketing',group ='na_field_marketing_rw', if_exists='replace')
+    
+    
+    
+# STEP 3
+# query from VDM for contacts table
+contacts = query_JDV("SELECT c_address1, c_address2, c_address3, c_busphone, c_city, c_company,c_country, c_datecreated, c_derived__persona1, c_dwm_completeness_level1, c_emailaddress, CAST(SUBSTRING(c_emailaddress, LOCATE('@',c_emailaddress)+1, 255) AS STRING) AS domain_all, c_engagement_status1,c_engagement_status_last_modified_timestamp1,c_firstname,c_lastname,c_metro_core_based_statistical_area1, c_mobilephone,c_sfdcaccountid,c_sfdccontactid,c_super_region1, c_zip_postal, contact_id, isbounced, issubscribed, status_flag,stg_del_flg,c_industry1 FROM eloqua_cntcts WHERE  c_super_region1 = 'NA' AND  status_flag = 1 AND stg_del_flg = 'false' AND c_engagement_status1  IN ('Most Active','Lapsing','Lapsed' ,'Inactive', 'Pending', 'Invalid') AND c_derived__persona1 IN ('','Business Analyst','IT Manager','IT Executive','Lead Developer','System Administrator','Architect', 'Other')")  
+
+
+# STEP 4
+# data prep for contacts data from vdm
+cols = list(contacts)
+for x in cols:
+    lambda x: contacts[x].replace({r'[^\x00-\x7F]+':''}, regex=True, inplace=True)
+    
+    
+    
+# STEP 5
+# transfering accounts data to redshift instance    
+contacts.to_redshift('nafm_contacts_c','rudesai','ChangeM3!','mktg_adhoc',group ='na_field_marketing_rw', if_exists='replace') 
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
