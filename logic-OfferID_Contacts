@@ -1,0 +1,83 @@
+-- Logic Code for OfferID Dashboard
+
+  --START
+
+
+-- creating first timestamp field from the inqrs table
+create table na_field_marketing.contacts_inqr_first as (
+select a_offerid1, c_emailaddress1,
+       min(a_timestamp1) as "First_timestamp"
+
+from na_field_marketing.contacts_inqr
+group by a_offerid1, c_emailaddress1
+);
+
+
+
+  -- CHANGING DATA TYPE FOR TIMESTAMP in the Inquiries_first table
+ALTER TABLE na_field_marketing.contacts_inqr_first ADD COLUMN "first_timestamp_new" date ;
+UPDATE na_field_marketing.contacts_inqr_first SET "first_timestamp_new" = cast ("first_timestamp" as date );
+ALTER TABLE na_field_marketing.contacts_inqr_first DROP COLUMN "first_timestamp";
+ALTER TABLE na_field_marketing.contacts_inqr_first RENAME COLUMN "first_timestamp_new" TO "first_timestamp";
+
+
+
+
+  -- CHANGING DATA TYPE FOR First_TIMESTAMP in the Inquiries  table
+ALTER TABLE na_field_marketing.contacts_inqr ADD COLUMN "a_timestamp1_new" date ;
+UPDATE na_field_marketing.contacts_inqr SET "a_timestamp1_new" = cast ("a_timestamp1" as date );
+ALTER TABLE na_field_marketing.contacts_inqr DROP COLUMN "a_timestamp1";
+ALTER TABLE na_field_marketing.contacts_inqr RENAME COLUMN "a_timestamp1_new" TO "a_timestamp1";
+
+
+
+  -- CHANGING DATA TYPE FOR is_publicsector  in the contacts_all_flagged table
+ALTER TABLE na_field_marketing.nafm_contacts_all_flagged ADD COLUMN "is_publicsector_new" varchar ;
+UPDATE na_field_marketing.nafm_contacts_all_flagged SET "is_publicsector_new" = cast ("is_publicsector" as varchar);
+ALTER TABLE na_field_marketing.nafm_contacts_all_flagged DROP COLUMN "is_publicsector";
+ALTER TABLE na_field_marketing.nafm_contacts_all_flagged RENAME COLUMN "is_publicsector_new" TO "is_publicsector";
+
+
+
+-- dropping the existing table
+  drop table na_field_marketing.cncts_offerid;
+  drop table na_field_marketing.cncts_offerid_final; 
+
+-- creating new table
+
+create table na_field_marketing.cncts_offerid as (
+  select  c.*,i.a_timestamp1,i.a_offerid1 ,s.sfdc_owner_name,
+
+   CASE
+        when c.sfdc_account_classification is null or c.sfdc_account_classification = '' then 'No Account Classification'
+        when c.sfdc_account_classification in ('Unclassified','Duplicate Account - Delete','Hosting/T2 OEM','TERRITORY','UNALLOCATED','EMEA - Hosting','GLOBAL') then 'Other'
+        when c.sfdc_account_classification in ('Partner - Premier','Partner - OEM','Partner - Advanced Partner','Partner - Distributor','Partner - ISV','Partner - Certified Services Partner','Partner - Systems Integrator','Partner - Ready Partner','Partner - Service/Cloud Provider','Partner - Training','Partner - Other','Partner - Unaffiliated') then 'Partner'
+        when c.sfdc_account_classification in ( 'Sales - EDU', 'Sales - US Federal Government', 'Sales - State and Local') then 'PS'
+        when c.sfdc_account_classification in ('Strategic','STRATEGIC') then 'Strategic'
+        else c.sfdc_account_classification
+        END AS "Grand_Acc_Classification"
+
+
+   from na_field_marketing.nafm_contacts_all_flagged c
+     join na_field_marketing.contacts_inqr i on c.c_emailaddress = i.c_emailaddress1
+    LEFT JOIN na_field_marketing.sfdc_accnt s on c.sfdc_account_id = s.vdm_sfdc_account_id
+
+    );
+
+
+
+-- ADDING FIRST_TIMESTAMP FIELD
+create table na_field_marketing.cncts_offerid_final as(
+
+  select o.*, f.first_timestamp,
+
+   case
+        when f.First_timestamp <= o.c_datecreated   then 'New Contact' else 'Existing Contact'
+    END as "new_contact"
+
+  from na_field_marketing.cncts_offerid o
+  LEFT JOIN na_field_marketing.contacts_inqr_first f on (o.a_offerid1 = f.a_offerid1) and (o.c_emailaddress = f.c_emailaddress1)
+
+)
+
+-- END
